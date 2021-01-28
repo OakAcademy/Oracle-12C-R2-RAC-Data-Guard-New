@@ -1,0 +1,103 @@
+
+--Converting a Physical Standby Database into a Snapshot Standby Database
+
+--All scripts will run on standby database
+
+--check open mode
+$ sqlplus / as sysdba
+
+SQL> select open_mode from v$database;
+
+--if open_mode is read only
+SQL> shutdown immediate;
+
+SQL> startup mount;
+
+--check and stop redo apply
+SQL> SELECT PROCESS, STATUS, THREAD#, SEQUENCE#, BLOCK#, BLOCKS FROM V$MANAGED_STANDBY;
+
+SQL> ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+
+--check whether fast recovery area has been configured
+SQL> show parameter DB_RECOVERY_FILE_DEST
+
+
+--perform the conversion
+SQL> ALTER DATABASE CONVERT TO SNAPSHOT STANDBY;
+
+
+--open the snapshot standby in read/write mode
+SQL> ALTER DATABASE OPEN READ WRITE;
+
+SQL> select name,database_role,open_mode,db_unique_name from v$database;
+
+
+--Using a Snapshot Standby Database
+
+--check open mode of pluggable database
+SQL> select name,open_mode from v$pdbs;
+
+--if open mode is not read write
+SQL> alter pluggable database pdb1 open;
+
+--connect to pluggable database
+SQL> conn sys/oracle@pdb1 as sysdba
+
+SQL> show con_name
+
+--create test user
+SQL> create user snaptest identified by snaptest;
+
+SQL> grant dba to snaptest;
+
+--connect with test user
+SQL> conn snaptest/snaptest@pdb1
+
+--create test table
+SQL> create table test_snap (id number);
+
+SQL> insert into test_snap values (1);
+
+SQL> insert into test_snap values (2);
+
+SQL> commit;
+
+SQL> select * from test_snap;
+
+
+--Converting a Snapshot Standby Database into a Physical Standby Database
+
+--check open mode of database
+SQL> select open_mode from v$database;
+
+SQL> conn sys/oracle@standby as sysdba
+
+--if open_mode is read-write
+SQL> shutdown immediate;
+
+SQL> startup mount;
+
+--convert database to physical standby back
+SQL> ALTER DATABASE CONVERT TO PHYSICAL STANDBY;
+
+SQL> select name,database_role,open_mode,db_unique_name from v$database;
+
+--open standby read only
+SQL> alter database open;
+
+--check open mode of pluggable database
+SQL> select name,open_mode from v$pdbs;
+
+--open pluggable database 
+SQL> alter pluggable database pdb1 open;
+
+--check test user and test table which we have created on snapshot database
+SQL> conn snaptest/snaptest@pdb1
+
+SQL> conn sys/oracle@pdb1 as sysdba
+
+SQL> select * from dba_users where username='SNAPTEST';
+
+SQL> select * from dba_tables where table_name = 'TEST_SNAP';
+
+

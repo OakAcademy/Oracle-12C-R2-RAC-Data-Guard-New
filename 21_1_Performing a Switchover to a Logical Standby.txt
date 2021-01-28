@@ -1,0 +1,66 @@
+
+--On primary database
+SQL> select db_unique_name, database_role, switchover_status from v$database;
+
+--Prepare the current primary database for a logical standby database role
+SQL> alter database prepare to switchover to logical standby;
+
+
+--Build a LogMiner dictionary on the logical standby database
+SQL> alter database prepare to switchover to primary; 
+
+--Verify the LogMiner dictionary was received by the primary database
+SQL> select db_unique_name, database_role, switchover_status from v$database;
+
+----------------------------------------
+Note:
+You can cancel the switchover operation by issuing the following statements in the order shown:
+
+--Cancel switchover on the primary database:
+SQL> alter database prepare to switchover cancel;
+
+--Cancel the switchover on the logical standby database:
+SQL> alter database prepare to switchover cancel;
+
+----------------------------------------
+
+--Complete the role transition of the primary database to a logical standby database
+SQL> alter database commit to switchover to logical standby; 
+
+--verify the switchover notification was processed by the target standby database
+SQL> select db_unique_name, database_role, switchover_status from v$database;
+
+--On the logical standby database that you want to switch to the primary role
+SQL> alter database commit to switchover to primary;
+
+--On the new logical standby database, start SQL apply:
+SQL> alter database start logical standby apply immediate;
+
+
+--Switchover via Data Guard Broker
+
+--on primary
+$ dgmgrl /
+
+DGMGRL> switchover to orclstb
+
+----------------------------------------
+--connect to broker with sysdba role
+$ dgmgrl sys/oracle@primary
+
+DGMGRL> switchover to orclstb
+
+----------------------------------------
+
+DGMGRL> show configuration
+
+
+--switch back
+--on new primary
+
+$ dgmgrl /
+
+DGMGRL> switchover to orclprm
+
+DGMGRL> show configuration
+

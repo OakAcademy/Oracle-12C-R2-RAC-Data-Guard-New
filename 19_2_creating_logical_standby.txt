@@ -1,0 +1,101 @@
+
+
+--On standby database
+SQL> select db_unique_name,database_role,open_mode from v$database;
+
+SQL> shutdown immediate;
+
+SQL> startup mount;
+
+SQL> ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+
+--On primary database
+
+SQL> alter system set LOG_ARCHIVE_DEST_1='LOCATION=/u01/app/oracle/fast_recovery_area/orcl VALID_FOR=(ONLINE_LOGFILES,ALL_ROLES)';
+
+--Make a directory for standby archive logs
+$ mkdir -p /u01/app/oracle/fast_recovery_area/orclstbl
+
+SQL> alter system set LOG_ARCHIVE_DEST_3='LOCATION=/u01/app/oracle/fast_recovery_area/orclstbl VALID_FOR=(STANDBY_LOGFILES,STANDBY_ROLE)';
+
+--Run DBMS_LOGSTDBY.BUILD package on primary to create metadata for log miner to apply SQLs on logical standby site
+SQL> EXECUTE DBMS_LOGSTDBY.BUILD;
+
+
+--On standby database
+
+--Make a directory for standby archive logs
+$ mkdir -p /u01/app/oracle/fast_recovery_area/orclstbl
+
+--Set the archive log destination on standby site as well.
+SQL> alter system set LOG_ARCHIVE_DEST_1='LOCATION=/u01/app/oracle/fast_recovery_area/orcl VALID_FOR=(ONLINE_LOGFILES,ALL_ROLES)';
+
+SQL> alter system set LOG_ARCHIVE_DEST_3='LOCATION=/u01/app/oracle/fast_recovery_area/orclstbl VALID_FOR=(STANDBY_LOGFILES,STANDBY_ROLE)';
+
+SQL> show parameter log_archive_dest_2
+
+SQL> alter system set log_archive_dest_2='service="primary", db_unique_name="orclprm", valid_for=(ONLINE_LOGFILES,PRIMARY_ROLE)' scope=both;
+
+SQL> show parameter log_archive_dest_2
+
+--Start the recover and change the DB name of standby
+SQL> ALTER DATABASE RECOVER TO LOGICAL STANDBY orclstbl;
+
+SQL> SHUTDOWN IMMEDIATE;
+
+SQL> STARTUP MOUNT;
+ 
+SQL> ALTER DATABASE OPEN RESETLOGS;
+ 
+SQL> ALTER SYSTEM SET LOG_ARCHIVE_CONFIG='DG_CONFIG=(orclprm,orclstbl)' SCOPE=BOTH;
+
+
+--On primary database
+SQL> ALTER SYSTEM SET LOG_ARCHIVE_CONFIG='DG_CONFIG=(orclprm,orclstbl)' SCOPE=BOTH;
+
+SQL> show parameter log_archive_dest_2
+
+SQL> alter system set LOG_ARCHIVE_DEST_2='SERVICE="standby" LGWR ASYNC VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME="orclstbl"'; 
+
+SQL> show parameter log_archive_dest_2
+
+--On standby database
+SQL> ALTER DATABASE START LOGICAL STANDBY APPLY IMMEDIATE;
+
+SQL> COLUMN REALTIME_APPLY FORMAT a15
+SQL> COLUMN STATE FORMAT a16
+SQL> SELECT * FROM V$LOGSTDBY_STATE;
+
+
+SQL> SELECT SID, SERIAL#, SPID, TYPE FROM V$LOGSTDBY_PROCESS;
+
+
+--fix up data guard broker configuration on one of servers
+$ dgmgrl / 
+
+DGMGRL> show configuration;
+
+DGMGRL> disable configuration;
+
+DGMGRL> remove database 'orclstb';
+
+DGMGRL> add database 'orclstb' as connect identifier is standby maintained as logical;
+
+-------------------------------
+ORA-16698: member has a LOG_ARCHIVE_DEST_n parameter with SERVICE attribute set
+
+--on both servers
+SQL> alter system set log_archive_dest_2='' scope=both sid='*';
+-------------------------------
+
+DGMGRL> enable configuration;
+
+DGMGRL> show configuration;
+
+-------------------------------
+--on standby
+SQL> alter system set log_archive_dest_2='service="primary", db_unique_name="orclprm", valid_for=(ONLINE_LOGFILES,PRIMARY_ROLE)' scope=both;
+
+--on primary
+SQL> alter system set log_archive_dest_2='service="standby", db_unique_name="orclstb", valid_for=(ONLINE_LOGFILES,PRIMARY_ROLE)' scope=both;
+-------------------------------
